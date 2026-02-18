@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
+    "build:playground": "vite build --config vite.playground.ts",
     "dev": "vite --config vite.playground.ts",
     "preview": "vite preview --config vite.playground.ts",
     "lint": "eslint .",

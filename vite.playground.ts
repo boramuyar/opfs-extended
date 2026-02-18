@@ -17,6 +17,18 @@ export default defineConfig({
     'process.platform': '"browser"',
     'process.version': '"v20.0.0"',
   },
+  build: {
+    rollupOptions: {
+      // just-bash browser bundle references node builtins that aren't actually used at runtime
+      external: ['node:zlib', 'node:module'],
+      output: {
+        globals: {
+          'node:zlib': '{}',
+          'node:module': '{}',
+        },
+      },
+    },
+  },
   server: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
