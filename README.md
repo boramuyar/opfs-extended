@@ -1,73 +1,150 @@
-# React + TypeScript + Vite
+# opfs-extended
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A typed filesystem layer over the browser's [Origin Private File System](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) (OPFS). Provides a familiar `IFS` interface with metadata, permissions, watch events, batch operations, and cross-tab sync.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Full filesystem API** - read, write, append, copy, move, remove, mkdir, stat, exists
+- **Metadata** - attach arbitrary JSON metadata to any file or directory
+- **Directory permissions** - read/write guards per directory
+- **Watch events** - path-scoped subscriptions with cross-tab sync via BroadcastChannel
+- **Batch operations** - transactional multi-file writes
+- **Query** - filter directory entries by metadata
+- **Mount scoping** - create chroot-style views into subdirectories
+- **Zero dependencies** - pure browser APIs only
 
-## React Compiler
+## Quick start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm add opfs-extended
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+```ts
+import { createRoot } from 'opfs-extended'
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+// Create a root backed by an OPFS subdirectory
+const root = await createRoot('my-app')
+const fs = root.mount()
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+// Or mount the actual OPFS root
+import { createRootFromHandle } from 'opfs-extended'
+const handle = await navigator.storage.getDirectory()
+const root = await createRootFromHandle('root', handle)
+const fs = root.mount()
 ```
+
+## API
+
+### IFS
+
+The filesystem interface returned by `root.mount()`:
+
+```ts
+// Reading
+await fs.readFile('/data.bin')        // ArrayBuffer
+await fs.readTextFile('/notes.txt')   // string
+await fs.exists('/notes.txt')         // boolean
+await fs.stat('/notes.txt')           // FileStat
+await fs.ls('/')                      // FileEntry[]
+await fs.readDir('/')                 // string[]
+
+// Writing
+await fs.writeFile('/hello.txt', 'world')
+await fs.writeFile('/data.bin', arrayBuffer)
+await fs.appendFile('/log.txt', 'new line\n')
+await fs.mkdir('/deep/nested/dir', { recursive: true })
+
+// Copy, move, remove
+await fs.copyFile('/a.txt', '/b.txt')
+await fs.moveFile('/old.txt', '/new.txt')
+await fs.remove('/dir', { recursive: true })
+
+// Metadata
+await fs.setMeta('/file.txt', { tags: ['important'], author: 'alice' })
+const meta = await fs.getMeta('/file.txt')
+
+// Permissions
+await fs.setPermissions('/secret', { write: false })
+
+// Query
+const docs = await fs.query('/docs', entry => entry.meta.tags?.includes('draft'))
+
+// Batch (transactional)
+await fs.batch(async (tx) => {
+  await tx.writeFile('/a.txt', 'hello')
+  await tx.writeFile('/b.txt', 'world')
+})
+
+// Watch (path-scoped - watches directory and all descendants)
+const unsub = fs.watch('/', (events) => {
+  for (const e of events) {
+    console.log(e.type, e.path)  // 'create' '/docs/new.txt'
+  }
+})
+```
+
+### IRoot
+
+```ts
+const fs = root.mount()           // mount at root
+const scoped = root.mount('/sub') // chroot-style scoped view
+const stats = await root.usage()  // { totalSize, fileCount, directoryCount }
+await root.destroy()              // delete everything
+```
+
+### Watch events
+
+Watchers are path-scoped. A watcher on `/` receives events from any descendant path. Events include the full path of the affected entry:
+
+```ts
+interface WatchEvent {
+  type: 'create' | 'update' | 'delete'
+  entry: FileEntry
+  name: string   // filename
+  path: string   // full path
+}
+```
+
+Events sync across browser tabs via BroadcastChannel.
+
+## Playground
+
+An interactive playground is included for exploring the API:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+The playground provides:
+- File tree with drag-and-drop move and file import
+- Text editor with save
+- File download/export
+- Metadata and permissions editors
+- Bash console (via just-bash) for CLI-style interaction
+- Filename and metadata search (`meta:tags=component`)
+- Event log with full event data
+- Usage stats
+- Multi-tab sync indicator
+- Seed data button for quick demo setup
+
+## Development
+
+```bash
+pnpm install
+pnpm dev              # playground dev server
+pnpm test             # run tests
+pnpm typecheck        # typecheck library
+pnpm typecheck:playground  # typecheck playground
+pnpm build            # build library
+```
+
+## Architecture
+
+- `src/root.ts` - Root management, OPFS handle wrapping, subscriber dispatch
+- `src/mount.ts` - IFS implementation scoped to a mount path
+- `src/meta.ts` - `.meta` file read/write with Web Locks
+- `src/batch.ts` - Transactional batch operations
+- `src/broadcast.ts` - Cross-tab event sync via BroadcastChannel
+- `src/types.ts` - All type definitions
+- `playground/` - Interactive playground app
