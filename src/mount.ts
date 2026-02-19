@@ -707,10 +707,6 @@ export class Mount implements IFS {
     );
   }
 
-  async batch(fn: (tx: IFS) => Promise<void>): Promise<void> {
-    await fn(this);
-  }
-
   watch(
     dirPath: string,
     callback: (events: WatchEvent[]) => void,

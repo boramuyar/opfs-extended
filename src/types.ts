@@ -91,7 +91,6 @@ export interface IFS {
   utimes(path: string, mtime: Date): Promise<void>
   createReadStream(path: string): Promise<ReadableStream<Uint8Array>>
   createWriteStream(path: string, options?: WriteStreamOptions): Promise<import('./stream.ts').TrackedWritableStream>
-  batch(fn: (tx: IFS) => Promise<void>): Promise<void>
   watch(dirPath: string, callback: (events: WatchEvent[]) => void): Unsubscribe
   watchFile(path: string, callback: (event: WatchEvent) => void): Unsubscribe
 }
