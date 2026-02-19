@@ -6,8 +6,8 @@ import { Mount } from './mount.ts'
 
 type DirCallback = (events: WatchEvent[]) => void
 
-/** Singleton map: OPFS path → Root instance. */
-const roots = new Map<string, Root>()
+/** Singleton root instance. Only one root per runtime. */
+let activeRoot: Root | undefined
 
 /**
  * Internal Root implementation.
@@ -26,7 +26,7 @@ export class Root implements IRoot {
     this.opfsPath = opfsPath
     this.dirHandle = dirHandle
     this.isExternalHandle = isExternalHandle
-    this.broadcast = createBroadcast(opfsPath)
+    this.broadcast = createBroadcast()
     this.broadcastUnsub = this.broadcast.subscribe((dirPath, events) => {
       this.fireLocal(dirPath, events)
     })
@@ -52,7 +52,7 @@ export class Root implements IRoot {
     this.subscribers.clear()
     this.broadcast.destroy()
     this.broadcastUnsub?.()
-    roots.delete(this.opfsPath)
+    if (activeRoot === this) activeRoot = undefined
   }
 
   /** Calculate storage usage by recursively walking the OPFS tree. */
@@ -106,8 +106,7 @@ export class Root implements IRoot {
  * Singleton - calling with the same path returns the same instance.
  */
 export async function createRoot(opfsPath: string): Promise<Root> {
-  const existing = roots.get(opfsPath)
-  if (existing) return existing
+  if (activeRoot) return activeRoot
 
   const parent = await navigator.storage.getDirectory()
   const dirHandle = await parent.getDirectoryHandle(opfsPath, { create: true })
@@ -123,8 +122,7 @@ export async function createRootFromHandle(
   key: string,
   dirHandle: FileSystemDirectoryHandle,
 ): Promise<Root> {
-  const existing = roots.get(key)
-  if (existing) return existing
+  if (activeRoot) return activeRoot
 
   return initRoot(key, dirHandle, true)
 }
@@ -138,7 +136,7 @@ async function initRoot(key: string, dirHandle: FileSystemDirectoryHandle, isExt
   }
 
   const root = new Root(key, dirHandle, isExternalHandle)
-  roots.set(key, root)
+  activeRoot = root
   return root
 }
 
