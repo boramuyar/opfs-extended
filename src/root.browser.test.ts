@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { createRoot, createRootFromHandle, Root } from './root.ts'
+import { createRootFromHandle, Root } from './root.ts'
 
 const cleanupRoots: Root[] = []
 
@@ -16,7 +16,10 @@ afterEach(async () => {
 
 describe('createRoot', () => {
   it('creates a root and returns mount', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
     await fs.writeFile('/test.txt', 'works')
@@ -24,10 +27,12 @@ describe('createRoot', () => {
   })
 
   it('returns singleton for same path', async () => {
-    const path = uniqueRoot()
-    const r1 = await createRoot(path)
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const r1 = await createRootFromHandle(name, handle)
     cleanupRoots.push(r1)
-    const r2 = await createRoot(path)
+    const r2 = await createRootFromHandle(name, handle)
     expect(r1).toBe(r2)
   })
 })
@@ -48,7 +53,10 @@ describe('createRootFromHandle', () => {
 
 describe('mount scoping', () => {
   it('scopes mount to subpath', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const rootFs = root.mount()
     await rootFs.mkdir('/sub')
@@ -65,14 +73,17 @@ describe('mount scoping', () => {
 
 describe('destroy', () => {
   it('cleans up root directory', async () => {
-    const path = uniqueRoot()
-    const root = await createRoot(path)
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     const fs = root.mount()
     await fs.writeFile('/gone.txt', 'bye')
     await root.destroy()
 
     // Creating a new root at same path should start fresh
-    const root2 = await createRoot(path)
+    const handle2 = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root2 = await createRootFromHandle(name, handle2)
     cleanupRoots.push(root2)
     const fs2 = root2.mount()
     expect(await fs2.exists('/gone.txt')).toBe(false)
@@ -81,7 +92,10 @@ describe('destroy', () => {
 
 describe('usage', () => {
   it('reports file count and size', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
     await fs.writeFile('/a.txt', 'aaaa')
@@ -96,7 +110,10 @@ describe('usage', () => {
   })
 
   it('tracks usage incrementally after writes and removes', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
 
@@ -117,7 +134,10 @@ describe('usage', () => {
   })
 
   it('full walk recalculates and matches incremental', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
     await fs.writeFile('/a.txt', 'aaa')
@@ -132,7 +152,10 @@ describe('usage', () => {
   })
 
   it('fsck rebuilds accurate usage stats', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
     await fs.writeFile('/a.txt', 'abc')

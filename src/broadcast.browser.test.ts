@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { createRoot } from './root.ts'
+import { createRootFromHandle } from './root.ts'
 import type { Root } from './root.ts'
 import type { WatchEvent } from './types.ts'
 
@@ -43,7 +43,9 @@ function waitForWorker(worker: Worker): Promise<{ ok: boolean; error?: string }>
 describe('cross-worker broadcast', () => {
   it('receives watch events from another worker via BroadcastChannel', async () => {
     const rootPath = uniqueRoot()
-    const root = await createRoot(rootPath)
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(rootPath, { create: true })
+    const root = await createRootFromHandle(rootPath, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
 
@@ -76,7 +78,9 @@ describe('cross-worker broadcast', () => {
 
   it('does not fire watcher for unwatched directory', async () => {
     const rootPath = uniqueRoot()
-    const root = await createRoot(rootPath)
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(rootPath, { create: true })
+    const root = await createRootFromHandle(rootPath, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
 

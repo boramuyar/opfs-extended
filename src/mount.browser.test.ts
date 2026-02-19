@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { createRoot } from './root.ts'
+import { createRootFromHandle } from './root.ts'
 import type { Root } from './root.ts'
 import type { IFS, WatchEvent } from './types.ts'
 import { NotFoundError, ExistsError, PermissionError } from './errors.ts'
@@ -18,7 +18,10 @@ afterEach(async () => {
 })
 
 async function setup() {
-  root = await createRoot(uniqueRoot())
+  const name = uniqueRoot()
+  const opfsRoot = await navigator.storage.getDirectory()
+  const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+  root = await createRootFromHandle(name, handle)
   fs = root.mount()
 }
 

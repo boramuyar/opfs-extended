@@ -1,4 +1,4 @@
-import { createRoot } from './root.ts'
+import { createRootFromHandle } from './root.ts'
 
 interface WorkerMessage {
   rootPath: string
@@ -9,7 +9,9 @@ interface WorkerMessage {
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   const { rootPath, filePath, content } = e.data
   try {
-    const root = await createRoot(rootPath)
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(rootPath)
+    const root = await createRootFromHandle(rootPath, handle)
     const fs = root.mount()
     await fs.writeFile(filePath, content)
     // Don't destroy — let the main thread own cleanup

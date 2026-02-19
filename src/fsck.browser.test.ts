@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { createRoot, Root } from './root.ts'
+import { createRootFromHandle, Root } from './root.ts'
 import { META_FILE } from './path.ts'
 
 const cleanupRoots: Root[] = []
@@ -17,7 +17,10 @@ afterEach(async () => {
 
 describe('fsck', () => {
   it('rebuilds .meta when deleted', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
 
@@ -45,7 +48,10 @@ describe('fsck', () => {
   })
 
   it('removes orphaned .meta entries for deleted files', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
 
@@ -65,7 +71,10 @@ describe('fsck', () => {
   })
 
   it('returns repaired: 0 on healthy tree', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
 
@@ -79,7 +88,10 @@ describe('fsck', () => {
   })
 
   it('updates file size when it differs', async () => {
-    const root = await createRoot(uniqueRoot())
+    const name = uniqueRoot()
+    const opfsRoot = await navigator.storage.getDirectory()
+    const handle = await opfsRoot.getDirectoryHandle(name, { create: true })
+    const root = await createRootFromHandle(name, handle)
     cleanupRoots.push(root)
     const fs = root.mount()
 
@@ -98,7 +110,7 @@ describe('fsck', () => {
     expect(stat.size).toBe(24)
   })
 
-  it('autoRepair runs fsck on createRoot', async () => {
+  it('autoRepair runs fsck on createRootFromHandle', async () => {
     const name = uniqueRoot()
 
     // Manually set up an OPFS directory with a file but no .meta
@@ -109,8 +121,8 @@ describe('fsck', () => {
     await writable.write('test')
     await writable.close()
 
-    // createRoot with autoRepair should detect the file and build .meta
-    const root = await createRoot(name, { autoRepair: true })
+    // createRootFromHandle with autoRepair should detect the file and build .meta
+    const root = await createRootFromHandle(name, dirHandle, { autoRepair: true })
     cleanupRoots.push(root)
 
     const fs = root.mount()

@@ -122,16 +122,14 @@ export class Root implements IRoot {
 }
 
 /**
- * Get or create a Root for the given OPFS path.
- * Singleton - calling with the same path returns the same instance.
+ * Get or create a Root backed by the OPFS root directory.
+ * Singleton — only one root per runtime.
  */
-export async function createRoot(opfsPath: string, options?: CreateRootOptions): Promise<Root> {
+export async function createRoot(options?: CreateRootOptions): Promise<Root> {
   if (activeRoot) return activeRoot
 
-  const parent = await navigator.storage.getDirectory()
-  const dirHandle = await parent.getDirectoryHandle(opfsPath, { create: true })
-
-  return initRoot(opfsPath, dirHandle, false, options)
+  const dirHandle = await navigator.storage.getDirectory()
+  return initRoot('', dirHandle, true, options)
 }
 
 /**
