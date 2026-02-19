@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated
+coverage
+src/__screenshots__
+
+# Claude Code
+.claude
