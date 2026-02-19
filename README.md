@@ -14,6 +14,7 @@ Provides a familiar `IFS` interface with metadata, permissions, watch events, ba
 - **Batch operations** - transactional multi-file writes
 - **Query** - filter directory entries by metadata
 - **Mount scoping** - create chroot-style views into subdirectories
+- **Metadata repair (fsck)** - rebuild `.meta` from actual OPFS state when corrupted or lost
 - **Zero dependencies** - pure browser APIs only
 
 ## Quick start
@@ -107,6 +108,12 @@ const fs = root.mount()           // mount at root
 const scoped = root.mount('/sub') // chroot-style scoped view
 const stats = await root.usage()  // { totalSize, fileCount, directoryCount }
 await root.destroy()              // delete everything
+
+// Repair metadata — scan OPFS and rebuild .meta files
+const result = await root.fsck()  // { repaired: 2, entries: 15 }
+
+// Auto-repair on mount
+const root = await createRoot('my-app', { autoRepair: true })
 ```
 
 ### Watch events

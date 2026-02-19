@@ -43,6 +43,20 @@ export interface WatchEvent {
   path: string
 }
 
+/** Result of a filesystem consistency check (fsck). */
+export interface FsckResult {
+  /** Number of directories whose .meta was rebuilt or corrected. */
+  repaired: number
+  /** Total entries scanned (files + directories, excluding .meta). */
+  entries: number
+}
+
+/** Options for createRoot / createRootFromHandle. */
+export interface CreateRootOptions {
+  /** Run fsck() automatically on mount to repair metadata. Default false. */
+  autoRepair?: boolean
+}
+
 /** Aggregate storage statistics. */
 export interface UsageStats {
   totalSize: number
@@ -100,4 +114,5 @@ export interface IRoot {
   mount(subpath?: string): IFS
   destroy(): Promise<void>
   usage(): Promise<UsageStats>
+  fsck(): Promise<FsckResult>
 }

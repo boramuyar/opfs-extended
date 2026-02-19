@@ -40,4 +40,6 @@ export type {
   ChildMeta,
   Unsubscribe,
   WriteStreamOptions,
+  FsckResult,
+  CreateRootOptions,
 } from './types.ts'

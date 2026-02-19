@@ -1,11 +1,10 @@
 # Roadmap
 
-## Metadata repair (fsck)
+## ~~Metadata repair (fsck)~~ ✓
 
-If `.meta` files are lost or corrupted, there's no way to recover.
-Add a repair command that rebuilds metadata from OPFS state — scanning
-actual files/directories and reconstructing `.meta` entries with
-sensible defaults.
+Implemented. `root.fsck()` recursively scans OPFS state and rebuilds
+`.meta` entries. `createRoot(name, { autoRepair: true })` runs it
+automatically on mount.
 
 ## usage() incremental tracking
 
