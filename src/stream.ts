@@ -8,15 +8,18 @@ import { readMeta, withMetaLock, writeMeta, validateMetaSize } from "./meta.ts";
 export class TrackedWritableStream {
   private readonly inner: FileSystemWritableFileStream;
   private readonly root: Root;
+  private readonly dirHandle: FileSystemDirectoryHandle;
   private readonly dirAbsPath: string;
   private readonly fileName: string;
   private readonly absPath: string;
   private readonly userMeta: Record<string, unknown>;
+  private readonly _isNew: boolean;
   private bytesWritten = 0;
 
   constructor(
     inner: FileSystemWritableFileStream,
     root: Root,
+    dirHandle: FileSystemDirectoryHandle,
     dirAbsPath: string,
     fileName: string,
     absPath: string,
@@ -25,14 +28,13 @@ export class TrackedWritableStream {
   ) {
     this.inner = inner;
     this.root = root;
+    this.dirHandle = dirHandle;
     this.dirAbsPath = dirAbsPath;
     this.fileName = fileName;
     this.absPath = absPath;
     this._isNew = isNew;
     this.userMeta = userMeta;
   }
-
-  private _isNew: boolean;
 
   /**
    * Write data to the stream.
@@ -84,9 +86,18 @@ export class TrackedWritableStream {
     const isNew = this._isNew;
     const name = this.fileName;
     const dirAbs = this.dirAbsPath;
+    const dirHandle = this.dirHandle;
+
+    let entry!: {
+      name: string;
+      type: "file" | "directory";
+      size: number;
+      ctime: number;
+      mtime: number;
+      meta: Record<string, unknown>;
+    };
 
     await withMetaLock(dirAbs, async () => {
-      const dirHandle = await this.getDirHandle();
       const meta = await readMeta(dirHandle);
       const existing = meta.children[name];
       meta.children[name] = {
@@ -97,36 +108,25 @@ export class TrackedWritableStream {
         meta: Object.keys(this.userMeta).length > 0 ? this.userMeta : (existing?.meta ?? {}),
       };
       await writeMeta(dirHandle, meta);
+      const child = meta.children[name];
+      entry = {
+        name,
+        type: child.type,
+        size: child.size ?? 0,
+        ctime: child.ctime,
+        mtime: child.mtime,
+        meta: child.meta,
+      };
     });
 
-    const dirHandle = await this.getDirHandle();
-    const dirMeta = await readMeta(dirHandle);
-    if (dirMeta.children[name]) {
-      this.root.notifySubscribers(dirAbs, [
-        {
-          type: isNew ? "create" : "update",
-          entry: {
-            name,
-            type: dirMeta.children[name].type,
-            size: dirMeta.children[name].size ?? 0,
-            ctime: dirMeta.children[name].ctime,
-            mtime: dirMeta.children[name].mtime,
-            meta: dirMeta.children[name].meta,
-          },
-          name,
-          path: this.absPath,
-        },
-      ]);
-    }
-  }
-
-  private async getDirHandle(): Promise<FileSystemDirectoryHandle> {
-    const segments = this.dirAbsPath.split("/").filter(Boolean);
-    let current = this.root.dirHandle;
-    for (const seg of segments) {
-      current = await current.getDirectoryHandle(seg, { create: false });
-    }
-    return current;
+    this.root.notifySubscribers(dirAbs, [
+      {
+        type: isNew ? "create" : "update",
+        entry,
+        name,
+        path: this.absPath,
+      },
+    ]);
   }
 }
 

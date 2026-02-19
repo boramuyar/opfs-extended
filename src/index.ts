@@ -12,8 +12,6 @@ export {
   NotFoundError,
   ExistsError,
   PermissionError,
-  NotDirectoryError,
-  NotFileError,
   MetadataSizeError,
 } from './errors.ts'
 
@@ -40,7 +38,6 @@ export type {
   MkdirOptions,
   DirMeta,
   ChildMeta,
-  BufferEncoding,
   Unsubscribe,
   WriteStreamOptions,
 } from './types.ts'

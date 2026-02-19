@@ -1,12 +1,8 @@
-/** Supported string encodings for file I/O. */
-export type BufferEncoding = 'utf8' | 'utf-8' | 'ascii' | 'binary' | 'base64' | 'hex' | 'latin1'
-
 /** Callback unsubscriber returned by watch/watchFile. */
 export type Unsubscribe = () => void
 
 /** Options for writeFile. */
 export interface WriteOptions {
-  encoding?: BufferEncoding
   meta?: Record<string, unknown>
 }
 

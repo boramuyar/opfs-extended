@@ -33,22 +33,6 @@ export class PermissionError extends FSError {
   }
 }
 
-/** Expected a directory but got a file. */
-export class NotDirectoryError extends FSError {
-  constructor(path: string) {
-    super(`Not a directory: ${path}`, path)
-    this.name = 'NotDirectoryError'
-  }
-}
-
-/** Expected a file but got a directory. */
-export class NotFileError extends FSError {
-  constructor(path: string) {
-    super(`Not a file: ${path}`, path)
-    this.name = 'NotFileError'
-  }
-}
-
 /** User metadata exceeds 64KB limit. */
 export class MetadataSizeError extends FSError {
   constructor(path: string) {

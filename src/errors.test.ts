@@ -4,8 +4,6 @@ import {
   NotFoundError,
   ExistsError,
   PermissionError,
-  NotDirectoryError,
-  NotFileError,
   MetadataSizeError,
 } from './errors.ts'
 
@@ -14,8 +12,6 @@ describe('error hierarchy', () => {
     expect(new NotFoundError('/x')).toBeInstanceOf(FSError)
     expect(new ExistsError('/x')).toBeInstanceOf(FSError)
     expect(new PermissionError('/x', 'read')).toBeInstanceOf(FSError)
-    expect(new NotDirectoryError('/x')).toBeInstanceOf(FSError)
-    expect(new NotFileError('/x')).toBeInstanceOf(FSError)
     expect(new MetadataSizeError('/x')).toBeInstanceOf(FSError)
   })
 

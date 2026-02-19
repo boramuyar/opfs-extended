@@ -4,7 +4,6 @@ import { MetadataSizeError } from './errors.ts'
 
 const MAX_META_USER_BYTES = 64 * 1024
 const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 
 /** Default metadata for a new directory. */
 export function defaultDirMeta(): DirMeta {
@@ -60,4 +59,4 @@ export async function withMetaLock<T>(dirPath: string, fn: () => Promise<T>): Pr
   return navigator.locks.request(lockName, () => fn())
 }
 
-export { decoder, encoder }
+export { encoder }

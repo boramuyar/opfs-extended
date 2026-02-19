@@ -21,7 +21,6 @@ import {
   encoder,
 } from "./meta.ts";
 import type { Root } from "./root.ts";
-import { BatchFS } from "./batch.ts";
 
 /**
  * Navigate from root handle to a directory handle at the given absolute path.
@@ -41,41 +40,33 @@ async function getDirHandle(
 }
 
 /**
+ * Navigate to a directory handle and check a permission in one traversal.
+ * Throws PermissionError if the permission is denied.
+ */
+async function getDirHandleChecked(
+  rootHandle: FileSystemDirectoryHandle,
+  absPath: string,
+  permission: "read" | "write",
+): Promise<FileSystemDirectoryHandle> {
+  const dirHandle = await getDirHandle(rootHandle, absPath);
+  const meta = await readMeta(dirHandle);
+  if (!meta.permissions[permission]) {
+    throw new PermissionError(absPath, permission);
+  }
+  return dirHandle;
+}
+
+/**
  * Navigate to a file handle at the given absolute path.
  */
 async function getFileHandle(
   rootHandle: FileSystemDirectoryHandle,
   absPath: string,
-  create = false,
 ): Promise<FileSystemFileHandle> {
   const dirPath = parentPath(absPath);
   const name = basename(absPath);
   const dirHandle = await getDirHandle(rootHandle, dirPath);
-  return dirHandle.getFileHandle(name, { create });
-}
-
-/** Check read permission for a directory path. */
-async function checkRead(
-  rootHandle: FileSystemDirectoryHandle,
-  dirAbsPath: string,
-): Promise<void> {
-  const dirHandle = await getDirHandle(rootHandle, dirAbsPath);
-  const meta = await readMeta(dirHandle);
-  if (!meta.permissions.read) {
-    throw new PermissionError(dirAbsPath, "read");
-  }
-}
-
-/** Check write permission for a directory path. */
-async function checkWrite(
-  rootHandle: FileSystemDirectoryHandle,
-  dirAbsPath: string,
-): Promise<void> {
-  const dirHandle = await getDirHandle(rootHandle, dirAbsPath);
-  const meta = await readMeta(dirHandle);
-  if (!meta.permissions.write) {
-    throw new PermissionError(dirAbsPath, "write");
-  }
+  return dirHandle.getFileHandle(name);
 }
 
 /** Convert string/ArrayBuffer data to ArrayBuffer. */
@@ -120,7 +111,7 @@ export class Mount implements IFS {
   async readFile(path: string): Promise<ArrayBuffer> {
     const abs = this.resolve(path);
     const dirAbs = parentPath(abs);
-    await checkRead(this.root.dirHandle, dirAbs);
+    await getDirHandleChecked(this.root.dirHandle, dirAbs, "read");
 
     try {
       const fileHandle = await getFileHandle(this.root.dirHandle, abs);
@@ -134,7 +125,7 @@ export class Mount implements IFS {
   async readTextFile(path: string): Promise<string> {
     const abs = this.resolve(path);
     const dirAbs = parentPath(abs);
-    await checkRead(this.root.dirHandle, dirAbs);
+    await getDirHandleChecked(this.root.dirHandle, dirAbs, "read");
 
     try {
       const fileHandle = await getFileHandle(this.root.dirHandle, abs);
@@ -154,10 +145,9 @@ export class Mount implements IFS {
     const dirAbs = parentPath(abs);
     const name = basename(abs);
 
-    await checkWrite(this.root.dirHandle, dirAbs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
 
     const buffer = toBuffer(data);
-    const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
     const fileHandle = await dirHandle.getFileHandle(name, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(buffer);
@@ -169,6 +159,7 @@ export class Mount implements IFS {
     }
 
     const now = Date.now();
+    let entry!: FileEntry;
     const eventType = await withMetaLock(dirAbs, async () => {
       const meta = await readMeta(dirHandle);
       const isNew = !meta.children[name];
@@ -180,17 +171,12 @@ export class Mount implements IFS {
         meta: userMeta,
       };
       await writeMeta(dirHandle, meta);
+      entry = toFileEntry(name, meta.children[name]);
       return isNew ? ("create" as const) : ("update" as const);
     });
 
-    const dirMeta = await readMeta(dirHandle);
     this.root.notifySubscribers(dirAbs, [
-      {
-        type: eventType,
-        entry: toFileEntry(name, dirMeta.children[name]),
-        name,
-        path: abs,
-      },
+      { type: eventType, entry, name, path: abs },
     ]);
   }
 
@@ -199,7 +185,7 @@ export class Mount implements IFS {
     const dirAbs = parentPath(abs);
     const name = basename(abs);
 
-    await checkWrite(this.root.dirHandle, dirAbs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
 
     const existing = await this.readFile(path);
     const appendBuf = toBuffer(data);
@@ -207,33 +193,24 @@ export class Mount implements IFS {
     combined.set(new Uint8Array(existing), 0);
     combined.set(new Uint8Array(appendBuf), existing.byteLength);
 
-    const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
     const fileHandle = await dirHandle.getFileHandle(name, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(combined);
     await writable.close();
 
     const now = Date.now();
+    let entry!: FileEntry;
     await withMetaLock(dirAbs, async () => {
       const meta = await readMeta(dirHandle);
-      if (meta.children[name]) {
-        meta.children[name].size = combined.byteLength;
-        meta.children[name].mtime = now;
-      }
+      meta.children[name].size = combined.byteLength;
+      meta.children[name].mtime = now;
       await writeMeta(dirHandle, meta);
+      entry = toFileEntry(name, meta.children[name]);
     });
 
-    const dirMeta = await readMeta(dirHandle);
-    if (dirMeta.children[name]) {
-      this.root.notifySubscribers(dirAbs, [
-        {
-          type: "update",
-          entry: toFileEntry(name, dirMeta.children[name]),
-          name,
-          path: abs,
-        },
-      ]);
-    }
+    this.root.notifySubscribers(dirAbs, [
+      { type: "update", entry, name, path: abs },
+    ]);
   }
 
   async copyFile(src: string, dest: string): Promise<void> {
@@ -264,9 +241,7 @@ export class Mount implements IFS {
 
     if (!name) return; // can't remove root
 
-    await checkWrite(this.root.dirHandle, dirAbs);
-
-    const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
 
     // Determine entry type before removal for the watch event
     let entryType: "file" | "directory" = "file";
@@ -355,7 +330,7 @@ export class Mount implements IFS {
 
     if (!name) return; // root already exists
 
-    await checkWrite(this.root.dirHandle, dirAbs);
+    await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
 
     if (options?.recursive) {
       // Create all intermediate directories
@@ -462,9 +437,7 @@ export class Mount implements IFS {
 
   async ls(path: string): Promise<FileEntry[]> {
     const abs = this.resolve(path);
-    await checkRead(this.root.dirHandle, abs);
-
-    const dirHandle = await getDirHandle(this.root.dirHandle, abs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, abs, "read");
     const meta = await readMeta(dirHandle);
     const entries: FileEntry[] = [];
     const seen = new Set<string>();
@@ -506,9 +479,7 @@ export class Mount implements IFS {
 
   async readDir(path: string): Promise<string[]> {
     const abs = this.resolve(path);
-    await checkRead(this.root.dirHandle, abs);
-
-    const dirHandle = await getDirHandle(this.root.dirHandle, abs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, abs, "read");
     const names: string[] = [];
 
     for await (const [name] of dirHandle.entries()) {
@@ -583,10 +554,9 @@ export class Mount implements IFS {
     const dirAbs = parentPath(abs);
     const name = basename(abs);
 
-    await checkWrite(this.root.dirHandle, dirAbs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
 
-    const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
-
+    let entry!: FileEntry;
     await withMetaLock(dirAbs, async () => {
       const dirMeta = await readMeta(dirHandle);
       let child = dirMeta.children[name];
@@ -618,19 +588,12 @@ export class Mount implements IFS {
       child.meta = { ...child.meta, ...meta };
       child.mtime = Date.now();
       await writeMeta(dirHandle, dirMeta);
+      entry = toFileEntry(name, child);
     });
 
-    const dirMeta = await readMeta(dirHandle);
-    if (dirMeta.children[name]) {
-      this.root.notifySubscribers(dirAbs, [
-        {
-          type: "update",
-          entry: toFileEntry(name, dirMeta.children[name]),
-          name,
-          path: abs,
-        },
-      ]);
-    }
+    this.root.notifySubscribers(dirAbs, [
+      { type: "update", entry, name, path: abs },
+    ]);
   }
 
   async getMeta(path: string): Promise<Record<string, unknown>> {
@@ -638,9 +601,7 @@ export class Mount implements IFS {
     const dirAbs = parentPath(abs);
     const name = basename(abs);
 
-    await checkRead(this.root.dirHandle, dirAbs);
-
-    const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, dirAbs, "read");
     const meta = await readMeta(dirHandle);
     const child = meta.children[name];
     if (!child) throw new NotFoundError(path);
@@ -670,9 +631,7 @@ export class Mount implements IFS {
     filter: (entry: FileEntry) => boolean,
   ): Promise<FileEntry[]> {
     const abs = this.resolve(dirPath);
-    await checkRead(this.root.dirHandle, abs);
-
-    const dirHandle = await getDirHandle(this.root.dirHandle, abs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, abs, "read");
     const meta = await readMeta(dirHandle);
     const results: FileEntry[] = [];
 
@@ -689,9 +648,7 @@ export class Mount implements IFS {
     const dirAbs = parentPath(abs);
     const name = basename(abs);
 
-    await checkWrite(this.root.dirHandle, dirAbs);
-
-    const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
 
     await withMetaLock(dirAbs, async () => {
       const meta = await readMeta(dirHandle);
@@ -705,7 +662,7 @@ export class Mount implements IFS {
   async createReadStream(path: string): Promise<ReadableStream<Uint8Array>> {
     const abs = this.resolve(path);
     const dirAbs = parentPath(abs);
-    await checkRead(this.root.dirHandle, dirAbs);
+    await getDirHandleChecked(this.root.dirHandle, dirAbs, "read");
 
     try {
       const fileHandle = await getFileHandle(this.root.dirHandle, abs);
@@ -724,9 +681,7 @@ export class Mount implements IFS {
     const dirAbs = parentPath(abs);
     const name = basename(abs);
 
-    await checkWrite(this.root.dirHandle, dirAbs);
-
-    const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
+    const dirHandle = await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
 
     // Check if file already exists to determine create vs update
     let isNew = true;
@@ -743,6 +698,7 @@ export class Mount implements IFS {
     return new TrackedWritableStream(
       writable,
       this.root,
+      dirHandle,
       dirAbs,
       name,
       abs,
@@ -752,8 +708,7 @@ export class Mount implements IFS {
   }
 
   async batch(fn: (tx: IFS) => Promise<void>): Promise<void> {
-    const batchFs = new BatchFS(this);
-    await batchFs.execute(fn);
+    await fn(this);
   }
 
   watch(
