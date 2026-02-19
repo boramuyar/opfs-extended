@@ -1,4 +1,5 @@
-import type { IFS, FileEntry, FileStat, WriteOptions, MkdirOptions, Permissions, WatchEvent, Unsubscribe } from './types.ts'
+import type { IFS, FileEntry, FileStat, WriteOptions, WriteStreamOptions, MkdirOptions, Permissions, WatchEvent, Unsubscribe } from './types.ts'
+import type { TrackedWritableStream } from './stream.ts'
 import type { Mount } from './mount.ts'
 
 /**
@@ -85,6 +86,14 @@ export class BatchFS implements IFS {
 
   utimes(path: string, mtime: Date): Promise<void> {
     return this.mount.utimes(path, mtime)
+  }
+
+  createReadStream(path: string): Promise<ReadableStream<Uint8Array>> {
+    return this.mount.createReadStream(path)
+  }
+
+  createWriteStream(path: string, options?: WriteStreamOptions): Promise<TrackedWritableStream> {
+    return this.mount.createWriteStream(path, options)
   }
 
   async batch(fn: (tx: IFS) => Promise<void>): Promise<void> {

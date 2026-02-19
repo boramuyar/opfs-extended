@@ -4,6 +4,7 @@ export { createRoot, createRootFromHandle } from './root.ts'
 // Classes (for instanceof checks)
 export { Root } from './root.ts'
 export { Mount } from './mount.ts'
+export { TrackedWritableStream } from './stream.ts'
 
 // Errors
 export {
@@ -41,4 +42,5 @@ export type {
   ChildMeta,
   BufferEncoding,
   Unsubscribe,
+  WriteStreamOptions,
 } from './types.ts'

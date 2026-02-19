@@ -1,0 +1,144 @@
+import type { Root } from "./root.ts";
+import { readMeta, withMetaLock, writeMeta, validateMetaSize } from "./meta.ts";
+
+/**
+ * A writable stream that tracks bytes written and updates `.meta` on close.
+ * Wraps a native `FileSystemWritableFileStream` from the OPFS API.
+ */
+export class TrackedWritableStream {
+  private readonly inner: FileSystemWritableFileStream;
+  private readonly root: Root;
+  private readonly dirAbsPath: string;
+  private readonly fileName: string;
+  private readonly absPath: string;
+  private readonly userMeta: Record<string, unknown>;
+  private bytesWritten = 0;
+
+  constructor(
+    inner: FileSystemWritableFileStream,
+    root: Root,
+    dirAbsPath: string,
+    fileName: string,
+    absPath: string,
+    isNew: boolean,
+    userMeta: Record<string, unknown>,
+  ) {
+    this.inner = inner;
+    this.root = root;
+    this.dirAbsPath = dirAbsPath;
+    this.fileName = fileName;
+    this.absPath = absPath;
+    this._isNew = isNew;
+    this.userMeta = userMeta;
+  }
+
+  private _isNew: boolean;
+
+  /**
+   * Write data to the stream.
+   * Accepts string, ArrayBuffer, TypedArray, DataView, or Blob.
+   */
+  async write(
+    data: FileSystemWriteChunkType,
+  ): Promise<void> {
+    await this.inner.write(data);
+    this.bytesWritten += dataSize(data);
+  }
+
+  /**
+   * Seek to a position in the file.
+   */
+  async seek(position: number): Promise<void> {
+    await this.inner.seek(position);
+  }
+
+  /**
+   * Truncate the file to the given size.
+   */
+  async truncate(size: number): Promise<void> {
+    await this.inner.truncate(size);
+  }
+
+  /**
+   * Close the stream and update directory metadata.
+   * Must be called to finalize the write.
+   */
+  async close(): Promise<void> {
+    await this.inner.close();
+    await this.updateMeta();
+  }
+
+  /**
+   * Abort the stream, discarding any written data.
+   */
+  async abort(reason?: string): Promise<void> {
+    await this.inner.abort(reason);
+  }
+
+  private async updateMeta(): Promise<void> {
+    if (Object.keys(this.userMeta).length > 0) {
+      validateMetaSize(this.absPath, this.userMeta);
+    }
+
+    const now = Date.now();
+    const isNew = this._isNew;
+    const name = this.fileName;
+    const dirAbs = this.dirAbsPath;
+
+    await withMetaLock(dirAbs, async () => {
+      const dirHandle = await this.getDirHandle();
+      const meta = await readMeta(dirHandle);
+      const existing = meta.children[name];
+      meta.children[name] = {
+        type: "file",
+        size: this.bytesWritten,
+        ctime: existing?.ctime ?? now,
+        mtime: now,
+        meta: Object.keys(this.userMeta).length > 0 ? this.userMeta : (existing?.meta ?? {}),
+      };
+      await writeMeta(dirHandle, meta);
+    });
+
+    const dirHandle = await this.getDirHandle();
+    const dirMeta = await readMeta(dirHandle);
+    if (dirMeta.children[name]) {
+      this.root.notifySubscribers(dirAbs, [
+        {
+          type: isNew ? "create" : "update",
+          entry: {
+            name,
+            type: dirMeta.children[name].type,
+            size: dirMeta.children[name].size ?? 0,
+            ctime: dirMeta.children[name].ctime,
+            mtime: dirMeta.children[name].mtime,
+            meta: dirMeta.children[name].meta,
+          },
+          name,
+          path: this.absPath,
+        },
+      ]);
+    }
+  }
+
+  private async getDirHandle(): Promise<FileSystemDirectoryHandle> {
+    const segments = this.dirAbsPath.split("/").filter(Boolean);
+    let current = this.root.dirHandle;
+    for (const seg of segments) {
+      current = await current.getDirectoryHandle(seg, { create: false });
+    }
+    return current;
+  }
+}
+
+/** Calculate byte size of writable data. */
+function dataSize(data: FileSystemWriteChunkType): number {
+  if (typeof data === "string") return new TextEncoder().encode(data).byteLength;
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  if (data instanceof Blob) return data.size;
+  if (ArrayBuffer.isView(data)) return data.byteLength;
+  // WriteParams object — estimate from data field
+  if (typeof data === "object" && data !== null && "data" in data) {
+    return dataSize(data.data as FileSystemWriteChunkType);
+  }
+  return 0;
+}

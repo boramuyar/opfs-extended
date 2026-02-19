@@ -69,6 +69,11 @@ export interface ChildMeta {
   meta: Record<string, unknown>
 }
 
+/** Options for createWriteStream. */
+export interface WriteStreamOptions {
+  meta?: Record<string, unknown>
+}
+
 /** The filesystem interface exposed by a mount. */
 export interface IFS {
   readFile(path: string): Promise<ArrayBuffer>
@@ -88,6 +93,8 @@ export interface IFS {
   setPermissions(dirPath: string, permissions: Partial<Permissions>): Promise<void>
   query(dirPath: string, filter: (entry: FileEntry) => boolean): Promise<FileEntry[]>
   utimes(path: string, mtime: Date): Promise<void>
+  createReadStream(path: string): Promise<ReadableStream<Uint8Array>>
+  createWriteStream(path: string, options?: WriteStreamOptions): Promise<import('./stream.ts').TrackedWritableStream>
   batch(fn: (tx: IFS) => Promise<void>): Promise<void>
   watch(dirPath: string, callback: (events: WatchEvent[]) => void): Unsubscribe
   watchFile(path: string, callback: (event: WatchEvent) => void): Unsubscribe

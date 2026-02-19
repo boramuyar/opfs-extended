@@ -3,12 +3,14 @@ import type {
   FileEntry,
   FileStat,
   WriteOptions,
+  WriteStreamOptions,
   MkdirOptions,
   Permissions,
   WatchEvent,
   DirMeta,
   Unsubscribe,
 } from "./types.ts";
+import { TrackedWritableStream } from "./stream.ts";
 import { NotFoundError, ExistsError, PermissionError } from "./errors.ts";
 import { resolvePath, parentPath, basename, isMetaFile } from "./path.ts";
 import {
@@ -698,6 +700,55 @@ export class Mount implements IFS {
       child.mtime = mtime.getTime();
       await writeMeta(dirHandle, meta);
     });
+  }
+
+  async createReadStream(path: string): Promise<ReadableStream<Uint8Array>> {
+    const abs = this.resolve(path);
+    const dirAbs = parentPath(abs);
+    await checkRead(this.root.dirHandle, dirAbs);
+
+    try {
+      const fileHandle = await getFileHandle(this.root.dirHandle, abs);
+      const file = await fileHandle.getFile();
+      return file.stream();
+    } catch {
+      throw new NotFoundError(path);
+    }
+  }
+
+  async createWriteStream(
+    path: string,
+    options?: WriteStreamOptions,
+  ): Promise<TrackedWritableStream> {
+    const abs = this.resolve(path);
+    const dirAbs = parentPath(abs);
+    const name = basename(abs);
+
+    await checkWrite(this.root.dirHandle, dirAbs);
+
+    const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
+
+    // Check if file already exists to determine create vs update
+    let isNew = true;
+    try {
+      await dirHandle.getFileHandle(name);
+      isNew = false;
+    } catch {
+      // file doesn't exist yet
+    }
+
+    const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+    const writable = await fileHandle.createWritable();
+
+    return new TrackedWritableStream(
+      writable,
+      this.root,
+      dirAbs,
+      name,
+      abs,
+      isNew,
+      options?.meta ?? {},
+    );
   }
 
   async batch(fn: (tx: IFS) => Promise<void>): Promise<void> {
