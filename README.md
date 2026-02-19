@@ -1,10 +1,13 @@
 # opfs-extended
 
-A typed filesystem layer over the browser's [Origin Private File System](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) (OPFS). Provides a familiar `IFS` interface with metadata, permissions, watch events, batch operations, and cross-tab sync.
+A typed filesystem layer over the browser's [Origin Private File System](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) (OPFS), built primarily for client-side agentic workflows. Gives AI agents and autonomous tools a persistent, sandboxed filesystem they can read, write, stream, and watch — entirely in the browser with no server required.
+
+Provides a familiar `IFS` interface with metadata, permissions, watch events, batch operations, and cross-tab sync.
 
 ## Features
 
 - **Full filesystem API** - read, write, append, copy, move, remove, mkdir, stat, exists
+- **Streaming** - readable and writable streams for large file I/O
 - **Metadata** - attach arbitrary JSON metadata to any file or directory
 - **Directory permissions** - read/write guards per directory
 - **Watch events** - path-scoped subscriptions with cross-tab sync via BroadcastChannel
@@ -75,6 +78,20 @@ await fs.batch(async (tx) => {
   await tx.writeFile('/b.txt', 'world')
 })
 
+// Streaming
+const readable = await fs.createReadStream('/large-file.bin')
+const reader = readable.getReader()
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+  // process value (Uint8Array chunks)
+}
+
+const writable = await fs.createWriteStream('/output.bin', { meta: { type: 'export' } })
+await writable.write('hello ')
+await writable.write(new Uint8Array([0x01, 0x02]))
+await writable.close()  // updates metadata and fires watch event
+
 // Watch (path-scoped - watches directory and all descendants)
 const unsub = fs.watch('/', (events) => {
   for (const e of events) {
@@ -143,6 +160,7 @@ pnpm build            # build library
 
 - `src/root.ts` - Root management, OPFS handle wrapping, subscriber dispatch
 - `src/mount.ts` - IFS implementation scoped to a mount path
+- `src/stream.ts` - TrackedWritableStream with metadata updates on close
 - `src/meta.ts` - `.meta` file read/write with Web Locks
 - `src/batch.ts` - Transactional batch operations
 - `src/broadcast.ts` - Cross-tab event sync via BroadcastChannel
