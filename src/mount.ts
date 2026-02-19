@@ -363,8 +363,6 @@ export class Mount implements IFS {
 
     if (!name) return; // root already exists
 
-    await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
-
     if (options?.recursive) {
       // Create all intermediate directories
       const segments = abs.split("/").filter(Boolean);
@@ -414,6 +412,7 @@ export class Mount implements IFS {
         }
       }
     } else {
+      await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
       const dirHandle = await getDirHandle(this.root.dirHandle, dirAbs);
 
       // Check if already exists

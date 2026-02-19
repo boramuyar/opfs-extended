@@ -150,12 +150,9 @@ describe('mkdir', () => {
 
   it('creates nested directories with recursive option', async () => {
     await setup()
-    // Parent of target must exist for write permission check
-    await fs.mkdir('/a')
-    await fs.mkdir('/a/b', { recursive: true })
-    expect(await fs.exists('/a/b')).toBe(true)
-    // Also verify deeper nesting once parent chain exists
     await fs.mkdir('/a/b/c', { recursive: true })
+    expect(await fs.exists('/a')).toBe(true)
+    expect(await fs.exists('/a/b')).toBe(true)
     expect(await fs.exists('/a/b/c')).toBe(true)
   })
 
