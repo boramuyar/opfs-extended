@@ -221,7 +221,7 @@ async function walkFsck(dirHandle: FileSystemDirectoryHandle): Promise<FsckResul
   }
 
   // Recurse into subdirectories
-  for (const [name, handle] of actualEntries) {
+  for (const [, handle] of actualEntries) {
     if (handle.kind === 'directory') {
       const sub = await walkFsck(handle as FileSystemDirectoryHandle)
       repaired += sub.repaired
