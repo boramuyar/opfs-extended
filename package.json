@@ -1,6 +1,6 @@
 {
   "name": "opfs-extended",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "A typed filesystem layer over OPFS for client-side agentic workflows",
   "author": "Bora Muyar",
