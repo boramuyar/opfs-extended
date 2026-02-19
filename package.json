@@ -1,10 +1,38 @@
 {
   "name": "opfs-extended",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
+  "description": "A typed filesystem layer over OPFS for client-side agentic workflows",
+  "author": "Bora Muyar",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/boramuyar/opfs-extended.git"
+  },
+  "keywords": [
+    "opfs",
+    "filesystem",
+    "browser",
+    "agentic",
+    "file-system",
+    "streaming",
+    "watch",
+    "metadata"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
   "scripts": {
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && tsc -p tsconfig.build.json",
     "build:playground": "vite build --config vite.playground.ts",
     "dev": "vite --config vite.playground.ts",
     "preview": "vite preview --config vite.playground.ts",
