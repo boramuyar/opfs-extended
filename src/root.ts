@@ -1,6 +1,6 @@
-import type { IRoot, UsageStats, FsckResult, CreateRootOptions, WatchEvent } from './types.ts'
+import type { IRoot, UsageStats, UsageOptions, FsckResult, CreateRootOptions, WatchEvent } from './types.ts'
 import { createBroadcast } from './broadcast.ts'
-import { readMeta, writeMeta, defaultDirMeta } from './meta.ts'
+import { readMeta, writeMeta, defaultDirMeta, withMetaLock } from './meta.ts'
 import { isMetaFile } from './path.ts'
 import { Mount } from './mount.ts'
 
@@ -55,14 +55,29 @@ export class Root implements IRoot {
     if (activeRoot === this) activeRoot = undefined
   }
 
-  /** Calculate storage usage by recursively walking the OPFS tree. */
-  async usage(): Promise<UsageStats> {
-    return walkUsage(this.dirHandle)
+  /** Return cached usage stats, or do a full tree walk if requested. */
+  async usage(options?: UsageOptions): Promise<UsageStats> {
+    if (options?.full) {
+      const stats = await walkUsage(this.dirHandle)
+      await withMetaLock('/', async () => {
+        const meta = await readMeta(this.dirHandle)
+        meta.usage = stats
+        await writeMeta(this.dirHandle, meta)
+      })
+      return stats
+    }
+    const meta = await readMeta(this.dirHandle)
+    if (meta.usage) return meta.usage
+    // Fallback: no cached stats yet — do a full walk
+    return this.usage({ full: true })
   }
 
   /** Scan OPFS state and repair metadata to match actual entries. */
   async fsck(): Promise<FsckResult> {
-    return walkFsck(this.dirHandle)
+    const result = await walkFsck(this.dirHandle)
+    // Rebuild cached usage stats after repair
+    await this.usage({ full: true })
+    return result
   }
 
   /** Register a directory-level watcher. Returns unsubscribe fn. */
@@ -146,6 +161,12 @@ async function initRoot(key: string, dirHandle: FileSystemDirectoryHandle, isExt
 
   if (options?.autoRepair) {
     await root.fsck()
+  } else {
+    // Seed cached usage if not present yet (one-time migration)
+    const meta = await readMeta(dirHandle)
+    if (!meta.usage) {
+      await root.usage({ full: true })
+    }
   }
 
   return root

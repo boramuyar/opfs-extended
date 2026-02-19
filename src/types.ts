@@ -64,10 +64,18 @@ export interface UsageStats {
   directoryCount: number
 }
 
+/** Options for usage(). */
+export interface UsageOptions {
+  /** Force a full tree walk to recalculate stats. Default false. */
+  full?: boolean
+}
+
 /** Per-directory `.meta` file shape. */
 export interface DirMeta {
   permissions: Permissions
   children: Record<string, ChildMeta>
+  /** Cached usage stats — only meaningful on root `.meta`. */
+  usage?: UsageStats
 }
 
 /** Metadata stored per child entry in a `.meta` file. */
@@ -113,6 +121,6 @@ export interface IFS {
 export interface IRoot {
   mount(subpath?: string): IFS
   destroy(): Promise<void>
-  usage(): Promise<UsageStats>
+  usage(options?: UsageOptions): Promise<UsageStats>
   fsck(): Promise<FsckResult>
 }

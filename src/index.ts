@@ -42,4 +42,5 @@ export type {
   WriteStreamOptions,
   FsckResult,
   CreateRootOptions,
+  UsageOptions,
 } from './types.ts'

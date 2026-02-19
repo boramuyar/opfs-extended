@@ -18,6 +18,7 @@ import {
   writeMeta,
   withMetaLock,
   validateMetaSize,
+  updateUsage,
   encoder,
 } from "./meta.ts";
 import type { Root } from "./root.ts";
@@ -160,19 +161,29 @@ export class Mount implements IFS {
 
     const now = Date.now();
     let entry!: FileEntry;
+    let sizeDelta = 0;
+    let isNewFile = false;
     const eventType = await withMetaLock(dirAbs, async () => {
       const meta = await readMeta(dirHandle);
-      const isNew = !meta.children[name];
+      const existing = meta.children[name];
+      isNewFile = !existing;
+      const oldSize = existing?.size ?? 0;
+      sizeDelta = buffer.byteLength - oldSize;
       meta.children[name] = {
         type: "file",
         size: buffer.byteLength,
-        ctime: meta.children[name]?.ctime ?? now,
+        ctime: existing?.ctime ?? now,
         mtime: now,
         meta: userMeta,
       };
       await writeMeta(dirHandle, meta);
       entry = toFileEntry(name, meta.children[name]);
-      return isNew ? ("create" as const) : ("update" as const);
+      return isNewFile ? ("create" as const) : ("update" as const);
+    });
+
+    await updateUsage(this.root.dirHandle, {
+      fileCount: isNewFile ? 1 : 0,
+      totalSize: sizeDelta,
     });
 
     this.root.notifySubscribers(dirAbs, [
@@ -200,13 +211,18 @@ export class Mount implements IFS {
 
     const now = Date.now();
     let entry!: FileEntry;
+    let sizeDelta = 0;
     await withMetaLock(dirAbs, async () => {
       const meta = await readMeta(dirHandle);
+      const oldSize = meta.children[name].size ?? 0;
+      sizeDelta = combined.byteLength - oldSize;
       meta.children[name].size = combined.byteLength;
       meta.children[name].mtime = now;
       await writeMeta(dirHandle, meta);
       entry = toFileEntry(name, meta.children[name]);
     });
+
+    await updateUsage(this.root.dirHandle, { totalSize: sizeDelta });
 
     this.root.notifySubscribers(dirAbs, [
       { type: "update", entry, name, path: abs },
@@ -243,13 +259,24 @@ export class Mount implements IFS {
 
     const dirHandle = await getDirHandleChecked(this.root.dirHandle, dirAbs, "write");
 
-    // Determine entry type before removal for the watch event
+    // Determine entry type and compute usage delta before removal
     let entryType: "file" | "directory" = "file";
+    let usageDelta = { totalSize: 0, fileCount: 0, directoryCount: 0 };
     try {
-      await dirHandle.getDirectoryHandle(name);
+      const subDirHandle = await dirHandle.getDirectoryHandle(name);
       entryType = "directory";
+      if (options?.recursive) {
+        usageDelta = await walkSubtreeUsage(subDirHandle);
+        usageDelta.directoryCount += 1; // count the dir itself
+      }
     } catch {
-      // assume file
+      // It's a file — get size from meta
+    }
+
+    if (entryType === "file") {
+      const meta = await readMeta(dirHandle);
+      const child = meta.children[name];
+      usageDelta = { totalSize: child?.size ?? 0, fileCount: 1, directoryCount: 0 };
     }
 
     try {
@@ -268,6 +295,12 @@ export class Mount implements IFS {
         delete meta.children[name];
         await writeMeta(dirHandle, meta);
       }
+    });
+
+    await updateUsage(this.root.dirHandle, {
+      totalSize: -usageDelta.totalSize,
+      fileCount: -usageDelta.fileCount,
+      directoryCount: -usageDelta.directoryCount,
     });
 
     // If not tracked in .meta, synthesize an entry for the watch event
@@ -362,6 +395,7 @@ export class Mount implements IFS {
         });
 
         if (created) {
+          await updateUsage(this.root.dirHandle, { directoryCount: 1 });
           this.root.notifySubscribers(parentPath, [
             {
               type: "create",
@@ -403,6 +437,8 @@ export class Mount implements IFS {
         };
         await writeMeta(dirHandle, meta);
       });
+
+      await updateUsage(this.root.dirHandle, { directoryCount: 1 });
 
       this.root.notifySubscribers(dirAbs, [
         {
@@ -728,4 +764,30 @@ export class Mount implements IFS {
       }
     });
   }
+}
+
+/** Recursively compute files/dirs/size within a directory (not counting the dir itself). */
+async function walkSubtreeUsage(
+  dirHandle: FileSystemDirectoryHandle,
+): Promise<{ totalSize: number; fileCount: number; directoryCount: number }> {
+  let totalSize = 0;
+  let fileCount = 0;
+  let directoryCount = 0;
+
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (isMetaFile(name)) continue;
+    if (handle.kind === "file") {
+      const file = await (handle as FileSystemFileHandle).getFile();
+      totalSize += file.size;
+      fileCount++;
+    } else {
+      directoryCount++;
+      const sub = await walkSubtreeUsage(handle as FileSystemDirectoryHandle);
+      totalSize += sub.totalSize;
+      fileCount += sub.fileCount;
+      directoryCount += sub.directoryCount;
+    }
+  }
+
+  return { totalSize, fileCount, directoryCount };
 }

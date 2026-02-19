@@ -94,4 +94,55 @@ describe('usage', () => {
     expect(usage.directoryCount).toBe(1)
     expect(usage.totalSize).toBeGreaterThanOrEqual(7)
   })
+
+  it('tracks usage incrementally after writes and removes', async () => {
+    const root = await createRoot(uniqueRoot())
+    cleanupRoots.push(root)
+    const fs = root.mount()
+
+    await fs.writeFile('/x.txt', 'hello') // 5 bytes
+    let usage = await root.usage()
+    expect(usage.fileCount).toBe(1)
+    expect(usage.totalSize).toBe(5)
+
+    await fs.writeFile('/y.txt', 'world!') // 6 bytes
+    usage = await root.usage()
+    expect(usage.fileCount).toBe(2)
+    expect(usage.totalSize).toBe(11)
+
+    await fs.remove('/x.txt')
+    usage = await root.usage()
+    expect(usage.fileCount).toBe(1)
+    expect(usage.totalSize).toBe(6)
+  })
+
+  it('full walk recalculates and matches incremental', async () => {
+    const root = await createRoot(uniqueRoot())
+    cleanupRoots.push(root)
+    const fs = root.mount()
+    await fs.writeFile('/a.txt', 'aaa')
+    await fs.mkdir('/sub')
+    await fs.writeFile('/sub/b.txt', 'bb')
+
+    const cached = await root.usage()
+    const full = await root.usage({ full: true })
+    expect(full.fileCount).toBe(cached.fileCount)
+    expect(full.directoryCount).toBe(cached.directoryCount)
+    expect(full.totalSize).toBe(cached.totalSize)
+  })
+
+  it('fsck rebuilds accurate usage stats', async () => {
+    const root = await createRoot(uniqueRoot())
+    cleanupRoots.push(root)
+    const fs = root.mount()
+    await fs.writeFile('/a.txt', 'abc')
+    await fs.mkdir('/d')
+    await fs.writeFile('/d/b.txt', 'de')
+
+    await root.fsck()
+    const usage = await root.usage()
+    expect(usage.fileCount).toBe(2)
+    expect(usage.directoryCount).toBe(1)
+    expect(usage.totalSize).toBe(5)
+  })
 })

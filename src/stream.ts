@@ -1,5 +1,5 @@
 import type { Root } from "./root.ts";
-import { readMeta, withMetaLock, writeMeta, validateMetaSize } from "./meta.ts";
+import { readMeta, withMetaLock, writeMeta, validateMetaSize, updateUsage } from "./meta.ts";
 
 /**
  * A writable stream that tracks bytes written and updates `.meta` on close.
@@ -96,10 +96,13 @@ export class TrackedWritableStream {
       mtime: number;
       meta: Record<string, unknown>;
     };
+    let sizeDelta = 0;
 
     await withMetaLock(dirAbs, async () => {
       const meta = await readMeta(dirHandle);
       const existing = meta.children[name];
+      const oldSize = existing?.size ?? 0;
+      sizeDelta = this.bytesWritten - oldSize;
       meta.children[name] = {
         type: "file",
         size: this.bytesWritten,
@@ -117,6 +120,11 @@ export class TrackedWritableStream {
         mtime: child.mtime,
         meta: child.meta,
       };
+    });
+
+    await updateUsage(this.root.dirHandle, {
+      fileCount: isNew ? 1 : 0,
+      totalSize: sizeDelta,
     });
 
     this.root.notifySubscribers(dirAbs, [

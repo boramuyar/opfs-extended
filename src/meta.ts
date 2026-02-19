@@ -1,4 +1,4 @@
-import type { DirMeta } from './types.ts'
+import type { DirMeta, UsageStats } from './types.ts'
 import { META_FILE } from './path.ts'
 import { MetadataSizeError } from './errors.ts'
 
@@ -57,6 +57,24 @@ export function validateMetaSize(path: string, meta: Record<string, unknown>): v
 export async function withMetaLock<T>(dirPath: string, fn: () => Promise<T>): Promise<T> {
   const lockName = `opfs-ext:meta:${dirPath}`
   return navigator.locks.request(lockName, () => fn())
+}
+
+/**
+ * Apply a usage delta to the cached stats in root `.meta`.
+ * Runs under the meta lock for '/'.
+ */
+export async function updateUsage(
+  rootDirHandle: FileSystemDirectoryHandle,
+  delta: Partial<UsageStats>,
+): Promise<void> {
+  await withMetaLock('/', async () => {
+    const meta = await readMeta(rootDirHandle)
+    if (!meta.usage) return
+    meta.usage.totalSize = Math.max(0, meta.usage.totalSize + (delta.totalSize ?? 0))
+    meta.usage.fileCount = Math.max(0, meta.usage.fileCount + (delta.fileCount ?? 0))
+    meta.usage.directoryCount = Math.max(0, meta.usage.directoryCount + (delta.directoryCount ?? 0))
+    await writeMeta(rootDirHandle, meta)
+  })
 }
 
 export { encoder }
